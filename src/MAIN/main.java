@@ -1,4 +1,3 @@
-
 package MAIN;
 
 
@@ -9,34 +8,105 @@ import java.util.Scanner;
 
 
 public class main {
-    // ==== VIEW METHODS ====
+
+    // ==== HELPER METHOD FOR DISPLAYING FILTERED DATA ====
+    /**
+     * Prints records from a List<Map<String, Object>> result set 
+     * in a table format, mimicking config.viewRecords().
+     * This method is necessary because config.viewRecords cannot accept parameters.
+     */
+    public static void printRecords(List<Map<String, Object>> result, String[] headers, String[] cols) {
+        if (result.isEmpty()) {
+            System.out.println("--------------------------------------------------------------------------------");
+            System.out.println("No records found.");
+            System.out.println("--------------------------------------------------------------------------------");
+            return;
+        }
+
+        // The formatting logic is copied from your config.viewRecords for consistency.
+        
+        // Print the headers dynamically
+        StringBuilder headerLine = new StringBuilder();
+        headerLine.append("--------------------------------------------------------------------------------\n| ");
+        for (String header : headers) {
+            headerLine.append(String.format("%-20s | ", header)); // Adjust formatting as needed
+        }
+        headerLine.append("\n--------------------------------------------------------------------------------");
+
+        System.out.println(headerLine.toString());
+
+        // Print the rows dynamically based on the provided column names
+        for (Map<String, Object> row : result) {
+            StringBuilder dataRow = new StringBuilder("| ");
+            for (String colName : cols) {
+                // Fetch the column value by name from the Map
+                String value = row.get(colName) != null ? row.get(colName).toString() : "";
+                dataRow.append(String.format("%-20s | ", value)); // Adjust formatting
+            }
+            System.out.println(dataRow.toString());
+        }
+        System.out.println("--------------------------------------------------------------------------------");
+    }
+    // ====================================================
+
+    // ==== VIEW METHODS (UPDATED for filtered view) ====
+
     public static void viewCustomers() {
-        String sql = "SELECT * FROM tbl_customers";
-        String[] headers = {"ID", "Name", "Number", "Address"};
-        String[] cols = {"c_id", "c_name", "c_num", "c_address"};
+        String sql = "SELECT * FROM tbl_users WHERE u_type = 'Customer'";
+        String[] headers = {"ID", "Name", "Email", "Role", "Status"};
+        String[] cols = {"u_id", "u_name", "u_email", "u_type", "u_status"};
         config con = new config();
+        // Uses the original config.viewRecords since no filtering is needed
         con.viewRecords(sql, headers, cols);
     }
+
 
     public static void viewProviders() {
-        String sql = "SELECT * FROM tbl_providers";
+        String sql = "SELECT u_id, u_name, u_number, u_skill, u_status FROM tbl_users WHERE u_type = 'Provider' AND u_status = 'Approved'";
         String[] headers = {"ID", "Name", "Number", "Skills", "Status"};
-        String[] cols = {"p_id", "p_name", "p_cnum", "p_skill", "p_status"};
+        String[] cols = {"u_id", "u_name", "u_number", "u_skill", "u_status"};
         config con = new config();
+        // Uses the original config.viewRecords since no filtering is needed
         con.viewRecords(sql, headers, cols);
     }
 
-     public static void viewAppointments() {
-        String sql = "SELECT * FROM tbl_appointments";
-        String[] headers = {"ID", "Customer ID", "Provider ID", "Date", "Status"};
-        String[] cols = {"a_id", "customer_id", "provider_id", "app_date", "app_status"};
+    // Global view of all appointments (Used by Admin)
+    public static void viewAppointments() {
+        String sql = "SELECT a.a_id, c.u_name AS customer_name, p.u_name AS provider_name, a.app_date, a.app_status " +
+                     "FROM tbl_appointments a " +
+                     "JOIN tbl_users c ON a.customer_id = c.u_id " +
+                     "JOIN tbl_users p ON a.provider_id = p.u_id";
+
+        String[] Appointmentsheaders = {"Appointment ID", "Customer name", "Provider name", "Date", "Status"};
+        String[] Appointmentscols = {"a_id", "customer_name", "provider_name", "app_date", "app_status"};
+
         config con = new config();
-        con.viewRecords(sql, headers, cols);
+        // Uses the original config.viewRecords
+        con.viewRecords(sql, Appointmentsheaders, Appointmentscols);
     }
 
+    /**
+     * NEW METHOD: Displays appointments filtered by the logged-in user.
+     * Uses con.fetchRecords() (which handles parameters) and the printRecords helper.
+     */
+    public static void viewMyAppointments(config con, String userId, boolean isProvider) {
+        String sql = "SELECT a.a_id, c.u_name AS customer_name, p.u_name AS provider_name, a.app_date, a.app_status " +
+                     "FROM tbl_appointments a " +
+                     "JOIN tbl_users c ON a.customer_id = c.u_id " +
+                     "JOIN tbl_users p ON a.provider_id = p.u_id " +
+                     "WHERE " + (isProvider ? "a.provider_id = ?" : "a.customer_id = ?");
 
+        String[] Appointmentsheaders = {"Appointment ID", "Customer name", "Provider name", "Date", "Status"};
+        String[] Appointmentscols = {"a_id", "customer_name", "provider_name", "app_date", "app_status"};
+        
+        // Use fetchRecords to securely execute the parameterized query
+        List<Map<String, Object>> filteredResult = con.fetchRecords(sql, userId); 
+        
+        // Print the result using the custom helper method
+        printRecords(filteredResult, Appointmentsheaders, Appointmentscols);
+    }
 
-    // ==== MAIN METHOD ====
+    // ==== MAIN METHOD (Provider Dashboard call is updated) ====
     public static void main(String[] args) {
         config con = new config();
         con.connectDB();
@@ -69,6 +139,7 @@ public class main {
                         Map<String, Object> user = result.get(0);
                         String stat = user.get("u_status").toString();
                         String type = user.get("u_type").toString();
+                        String id = user.get("u_id").toString();
 
                         if (stat.equalsIgnoreCase("Pending")) {
                             System.out.println("Account is Pending. Contact the Admin!");
@@ -77,67 +148,71 @@ public class main {
                             if (type.equalsIgnoreCase("Admin")) {
                                 adminDashboard(con, sc);
                             } else if (type.equalsIgnoreCase("Customer")) {
-                                customerDashboard(con, sc);
+                                customerDashboard(con, sc, id);
                             } else if (type.equalsIgnoreCase("Provider")) {
-                                providerDashboard(con, sc);
+                                // PASS THE PROVIDER ID
+                                providerDashboard(con, sc, id); 
                             }
                         }
                     }
                     break;
 
                 case 2:
-                            System.out.print("Enter Name: ");
-                            String name = sc.next();
-                            System.out.print("Enter Email: ");
-                            String email = sc.next();
+                    System.out.print("Enter Name: ");
+                    String name = sc.next();
+                    System.out.print("Enter Email: ");
+                    String email = sc.next();
 
                     while (true) {
-                            String checkEmail = "SELECT * FROM tbl_users WHERE u_email = ?";
-                            List<Map<String, Object>> exists = con.fetchRecords(checkEmail, email);
-                            if (exists.isEmpty()) break;
-                            System.out.print("Email already exists, enter another: ");
-                            email = sc.next();
-                     }
+                        String checkEmail = "SELECT * FROM tbl_users WHERE u_email = ?";
+                        List<Map<String, Object>> exists = con.fetchRecords(checkEmail, email);
+                        if (exists.isEmpty()) break;
+                        System.out.print("Email already exists, enter another: ");
+                        email = sc.next();
+                    }
 
-                            System.out.print("Enter User Type (1 - Admin / 2 - Customer / 3 - Provider): ");
-                            int t = sc.nextInt();
-                            String tp = (t == 1) ? "Admin" : (t == 2) ? "Customer" : "Provider";
+                    System.out.print("Enter User Type (1 - Admin / 2 - Customer / 3 - Provider): ");
+                    int t = sc.nextInt();
+                    String tp = (t == 1) ? "Admin" : (t == 2) ? "Customer" : "Provider";
 
-    System.out.print("Enter Password: ");
-    String pass = sc.next();
-    String hashed = config.hashPassword(pass);
+                    System.out.print("Enter Password: ");
+                    String pass = sc.next();
+                    String hashed = config.hashPassword(pass);
 
-    // Insert into tbl_users
-    String insert = "INSERT INTO tbl_users(u_name, u_email, u_type, u_status, u_pass) VALUES (?, ?, ?, ?, ?)";
-    con.addRecord(insert, name, email, tp, "Pending", hashed);
+                    // --- REFACTORED REGISTRATION (UNCHANGED) ---
+                    String insertUser = "INSERT INTO tbl_users(u_name, u_email, u_type, u_status, u_pass) VALUES (?, ?, ?, ?, ?)";
+                    con.addRecord(insertUser, name, email, tp, "Pending", hashed);
 
-    if (tp.equalsIgnoreCase("Customer")) {
-        // Insert into tbl_customers
-        sc.nextLine(); // consume leftover newline
-        System.out.print("Enter Contact Number: ");
-        String number = sc.nextLine();
-        System.out.print("Enter Address: ");
-        String address = sc.nextLine();
+                    String getUserIdQry = "SELECT u_id FROM tbl_users WHERE u_email = ? ORDER BY u_id DESC LIMIT 1";
+                    List<Map<String, Object>> userResult = con.fetchRecords(getUserIdQry, email);
+                    String newUserId = userResult.get(0).get("u_id").toString();
 
-        String addCustomer = "INSERT INTO tbl_customers(c_name, c_num, c_address) VALUES (?, ?, ?)";
-        con.addRecord(addCustomer, name, number, address);
+                    sc.nextLine(); // consume leftover newline
 
-        System.out.println("Customer profile added successfully!");
-    }
+                    if (tp.equalsIgnoreCase("Customer")) {
+                        System.out.print("Enter Contact Number: ");
+                        String number = sc.nextLine();
+                        System.out.print("Enter Address: ");
+                        String address = sc.nextLine();
 
-    if (tp.equalsIgnoreCase("Provider")) {
-        // Insert into tbl_providers
-        sc.nextLine(); // consume leftover newline
-        System.out.print("Enter Contact Number: ");
-        String contact = sc.nextLine();
-        System.out.print("Enter Skill/Service Offered: ");
-        String skill = sc.nextLine();
+                        String updateCustomer = "UPDATE tbl_users SET u_number = ?, u_address = ? WHERE u_id = ?";
+                        con.updateRecord(updateCustomer, number, address, newUserId);
+                        
+                        System.out.println("Customer profile added successfully!");
+                    }
 
-        String addProvider = "INSERT INTO tbl_providers(p_name, p_cnum, p_skill, p_status) VALUES (?, ?, ?, ?)";
-        con.addRecord(addProvider, name, contact, skill, "Available");
+                    if (tp.equalsIgnoreCase("Provider")) {
+                        System.out.print("Enter Contact Number: ");
+                        String contact = sc.nextLine();
+                        System.out.print("Enter Skill/Service Offered: ");
+                        String skill = sc.nextLine();
 
-        System.out.println("Provider profile added successfully!");
-    }
+                        String updateProvider = "UPDATE tbl_users SET u_number = ?, u_skill = ?, u_status = 'Available' WHERE u_id = ?";
+                        con.updateRecord(updateProvider, contact, skill, newUserId);
+
+                        System.out.println("Provider profile added successfully!");
+                    }
+                    // --- END REFACTORED REGISTRATION ---
 
                     System.out.println("Registration successful! Wait for Admin approval.");
                     break;
@@ -159,7 +234,9 @@ public class main {
         sc.close();
     }
 
-    // ==== ADMIN DASHBOARD ====
+    // ==== DASHBOARDS (Updated Appointment View Calls) ====
+    
+    // Admin Dashboard (UNCHANGED)
     public static void adminDashboard(config con, Scanner inp) {
         char cont;
         do {
@@ -192,7 +269,7 @@ public class main {
                     break;
 
                 case 3:
-                    viewAppointments();
+                    viewAppointments(); // Admin uses the global view 
                     break;
 
                 case 4:
@@ -208,8 +285,8 @@ public class main {
         } while (cont == 'Y' || cont == 'y');
     }
 
-    // ==== CUSTOMER DASHBOARD ====
-    public static void customerDashboard(config con, Scanner inp) {
+    // Customer Dashboard
+    public static void customerDashboard(config con, Scanner inp, String id) {
         char cont;
         do {
             System.out.println("\n===== CUSTOMER DASHBOARD =====");
@@ -228,13 +305,15 @@ public class main {
                     inp.nextLine();
                     System.out.print("Enter Appointment Date (YYYY-MM-DD): ");
                     String date = inp.nextLine();
-                    String sql = "INSERT INTO tbl_appointments(provider_id, app_date, app_status) VALUES (?, ?, ?)";
-                    con.addRecord(sql, providerId, date, "Pending");
+                    
+                    String sql = "INSERT INTO tbl_appointments(customer_id, provider_id, app_date, app_status) VALUES (?, ?, ?, ?)";
+                    con.addRecord(sql,id, providerId, date, "Pending");
                     System.out.println("Appointment booked successfully!");
                     break;
 
                 case 2:
-                    viewAppointments();
+                    // Use the filtered method for the customer
+                    viewMyAppointments(con, id, false); 
                     break;
 
                 case 3:
@@ -254,8 +333,8 @@ public class main {
         } while (cont == 'Y' || cont == 'y');
     }
 
-    // ==== PROVIDER DASHBOARD ====
-    public static void providerDashboard(config con, Scanner inp) {
+    // Provider Dashboard
+    public static void providerDashboard(config con, Scanner inp, String providerId) {
         char cont;
         do {
             System.out.println("\n===== PROVIDER DASHBOARD =====");
@@ -267,18 +346,22 @@ public class main {
 
             switch (action) {
                 case 1:
-                    viewAppointments();
+                    // Use the filtered method for the provider
+                    viewMyAppointments(con, providerId, true); 
                     break;
 
                 case 2:
-                    viewAppointments();
+                    // Show filtered view before update
+                    viewMyAppointments(con, providerId, true); 
                     System.out.print("Enter Appointment ID to update: ");
                     int appId = inp.nextInt();
                     inp.nextLine();
                     System.out.print("Enter new status (Approved/Cancelled/Done): ");
                     String stat = inp.nextLine();
-                    String sql = "UPDATE tbl_appointments SET app_status=? WHERE a_id=?";
-                    con.updateRecord(sql, stat, appId);
+                    
+                    // Secure update: ensure only this provider's appointments are updated
+                    String updateSql = "UPDATE tbl_appointments SET app_status=? WHERE a_id=? AND provider_id=?";
+                    con.updateRecord(updateSql, stat, appId, providerId);
                     System.out.println("Status updated!");
                     break;
 
@@ -294,7 +377,4 @@ public class main {
             cont = inp.next().charAt(0);
         } while (cont == 'Y' || cont == 'y');
     }
-    
-    
-    
 }
