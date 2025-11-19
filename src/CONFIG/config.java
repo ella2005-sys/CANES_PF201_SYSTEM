@@ -12,6 +12,7 @@ import java.sql.SQLException;
 
 public class config {
     //Connection Method to SQLITE
+//Connection Method to SQLITE
 public static Connection connectDB() {
         Connection con = null;
         try {
@@ -23,6 +24,7 @@ public static Connection connectDB() {
         }
         return con;
     }
+
     
     public void addRecord(String sql, Object... values) {
     try (Connection conn = this.connectDB(); // Use the connectDB method
